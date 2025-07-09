@@ -1,23 +1,30 @@
-
-mod utils;
-
 use eframe::egui;
 use std::fs;
 use std::sync::Arc;
-use eframe::egui::{Key, TextEdit}; //이건 냅두자
 
-fn main() -> Result<(), eframe::Error> {
-    let options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "Hello egui!",
-        options,
-        Box::new(|cc| {
-            setup_custom_fonts(&cc.egui_ctx);
-            Ok(Box::new(MyApp::default()))
-        }),
-    )
+//알파벳을 2진법으로 바꿈
+fn alphabet_to_bin(c: char) -> Option<String> {
+    if c.is_ascii_uppercase() {
+        let val = c as u8 - b'A' + 1;
+        Some(format!("{:05b}", val))
+    } else {
+        None
+    }
 }
 
+//2진법을 알파벳으로 바꿈
+fn bin_to_alphabet(s: &str) -> Option<char> {
+    if s.len() == 5 {
+        if let Ok(val) = u8::from_str_radix(s, 2) {
+            if val >= 1 && val <= 26 {
+                return Some((b'A' + val - 1) as char);
+            }
+        }
+    }
+    None
+}
+
+// 이건 신경쓰지마셈 별거 아님
 fn setup_custom_fonts(ctx: &egui::Context) {
     use egui::FontData;
     use egui::FontDefinitions;
@@ -25,60 +32,88 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 
     let mut fonts = FontDefinitions::default();
 
-    fonts.font_data.insert(
-        "my_font".to_owned(),
-        Arc::from(FontData::from_owned(
-            fs::read("fonts/GothicA1-Bold.ttf").expect("폰트 파일을 읽을 수 없습니다"),
-        )),
-    );
+    if let Ok(font_data) = fs::read("fonts/GothicA1-Bold.ttf") {
+        fonts.font_data.insert(
+            "my_font".to_owned(),
+            Arc::from(FontData::from_owned(font_data)),
+        );
 
-    fonts
-        .families
-        .get_mut(&Proportional)
-        .unwrap()
-        .insert(0, "my_font".to_owned());
+        fonts
+            .families
+            .get_mut(&Proportional)
+            .unwrap()
+            .insert(0, "my_font".to_owned());
 
-    ctx.set_fonts(fonts);
+        ctx.set_fonts(fonts);
+    }
 }
 
-#[derive(Default)]
-struct MyApp{
-    maintext: String,
-    inputline: String
+struct MyApp {
+    input: String,
+    output: String,
+    reverse_input: String,
+    reverse_output: String,
 }
 
+impl Default for MyApp {
+    fn default() -> Self {
+        Self {
+            input: String::new(),
+            output: String::new(),
+            reverse_input: String::new(),
+            reverse_output: String::new(),
+        }
+    }
+}
 
+//앱 구현
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let available_size = ui.available_size();
+            ui.heading("알파벳 → 2진법 변환기(5-bit)");
 
-            let top_height = available_size.y - 30.0;
-            ui.add_sized(
-                egui::vec2(available_size.x, top_height),
-                TextEdit::multiline(&mut self.maintext)
-                    .code_editor()
-                    .interactive(false),
-            );
-
-            ui.add_space(5.0);
-
-            let input_id = ui.make_persistent_id("input_line");
-
-            let response = ui.add_sized(
-                [ui.available_width(), 24.0],
-                TextEdit::singleline(&mut self.inputline)
-                    .id_source(input_id)
-                    .hint_text("Type Something..."),
-            );
-
-            if ui.memory(|mem| mem.has_focus(input_id)) && ui.input(|i| i.key_pressed(Key::Enter)) {
-                self.maintext += format!("\n{}", self.inputline).as_str();
-                self.inputline.clear();
+            ui.label("입력 (알파벳만 가능):");
+            if ui.text_edit_singleline(&mut self.input).changed() {
+                self.output = self
+                    .input
+                    .chars()
+                    .filter_map(|c| alphabet_to_bin(c.to_ascii_uppercase()))
+                    .collect::<Vec<_>>()
+                    .join(" ");
             }
 
+            ui.separator();
 
+            ui.label("2진법 출력:");
+            ui.label(&self.output);
+            ui.separator();
+
+            ui.heading("2진법 → 알파벳 변환기");
+
+            ui.label("입력 (5-bit 이진법 공백으로 분할, 예, 00001 00010):");
+            if ui.text_edit_singleline(&mut self.reverse_input).changed() {
+                self.reverse_output = self
+                    .reverse_input
+                    .split_whitespace()
+                    .filter_map(bin_to_alphabet)
+                    .collect();
+            }
+
+            ui.separator();
+            ui.label("알파벳 출력:");
+            ui.label(&self.reverse_output);
         });
-
     }
+}
+
+fn main() -> Result<(), eframe::Error> {
+    let options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "이진법 변환기 - A-Z ↔ 5-bit",
+        options,
+        Box::new(|cc| {
+            setup_custom_fonts(&cc.egui_ctx);
+            Ok(Box::new(MyApp::default()))
+        }),
+    )
 }
