@@ -1,60 +1,33 @@
-name: Rust Release
+name: Deploy to GitHub Pages
 
 on:
   push:
-    tags:
-      - 'v*.*.*'  # 버전 태그 푸시 시 작동
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: windows-latest  # EXE 빌드하려면 윈도우 환경 필요
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust & wasm target
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --force
+
+      - name: Build WASM
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          wasm-bindgen target/wasm32-unknown-unknown/release/*.wasm \
+            --target web --out-dir out --out-name app
+
+      - name: Copy static files (index.html etc.)
+        run: |
+          cp index.html out/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - name: Build EXE
-        run: cargo build --release
-
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: myapp-exe
-          path: target/release/myapp.exe
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download EXE artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: myapp-exe
-
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-
-      - name: Upload EXE to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/release/myapp.exe
-          asset_name: myapp.exe
-          asset_content_type: application/octet-stream
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
